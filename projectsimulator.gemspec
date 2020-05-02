@@ -1,6 +1,6 @@
 Gem::Specification.new do |s|
   s.name = 'projectsimulator'
-  s.version = '0.1.0'
+  s.version = '0.1.1'
   s.summary = 'Project Simulator (in development) aims to make it easier to observe ' + 
       'triggers and actions from an XML based model.'
   s.authors = ['James Robertson']
