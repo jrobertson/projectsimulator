@@ -162,15 +162,31 @@ module ProjectSimulator
       @messages = []
       
       h = {motion: MotionTrigger}
-      if @triggers.any? {|x| x.is_a? h[trigger.to_sym] and x.match } and \
-          @constraints.all?(&:match) then
+      
+      if @triggers.any? {|x| x.is_a? h[trigger.to_sym] and x.match } then
         
-        @messages = @actions.map(&:call)
+        if @constraints.all?(&:match) then
+        
+          @messages = @actions.map(&:call)
+          
+        else
+          
+          puts 'else reset?' if @debug
+          a = @constraints.select {|x| x.is_a? FrequencyConstraint }
+          puts 'a:' + a.inspect if @debug
+          a.each {|x| x.reset if x.counter > 0 }
+          return false
+        end
         
       end
       
     end
-
+    
+    def time=(val)
+      @time = val
+      @constraints.each {|x| x.time = val if x.is_a? TimeConstraint }
+    end
+    
   end
 
   class Action
@@ -291,6 +307,10 @@ module ProjectSimulator
       get /^(after .*)/i do |s|
         TimeConstraint.new(s, time: @time)
       end      
+      
+      get /^once only/i do |s|
+        FrequencyConstraint.new(1, debug: @debug)
+      end        
 
     end
 
@@ -340,15 +360,46 @@ module ProjectSimulator
 
   end
 
-  class TimeConstraint
+  class TimeConstraint    
     
-    attr_reader :match
+    attr_accessor :time
     
     def initialize(times, time: nil)
-      @match = ChronicBetween.new(times).within?(time)
+      @times, @time = times, time
+    end
+    
+    def match()
+      ChronicBetween.new(@times).within?(@time)
     end
         
-  end  
+  end
+
+  class FrequencyConstraint      
+      
+    def initialize(freq, debug: false)
+      @freq, @debug = freq, debug
+      @counter = 0
+    end
+    
+    def counter()
+      @counter
+    end
+    
+    def increment()
+      @counter += 1
+    end
+    
+    def match()
+      @counter < @freq
+    end
+    
+    def reset()
+      puts 'resetting' if @debug
+@foo = 0      
+@counter = 0
+    end
+    
+  end
 
   class Controller
     
@@ -366,14 +417,27 @@ module ProjectSimulator
 
     end
     
+    def time=(val)
+      @time = val
+      @events.each {|event| event.time = val }
+    end
+    
     def trigger(name, location: '')
       
       events = @events.select do |event|
         
         puts 'event: '  + event.inspect if @debug
 
-        event.match(trigger: 'motion', location: location='kitchen')
+        event.match(trigger: 'motion', location: location)
         
+      end
+      
+      puts 'events: ' + events.inspect if @debug
+      
+      events.each do |event|
+        c = event.constraints.select {|x| x.is_a? FrequencyConstraint }
+        puts 'c:' + c.inspect
+        c.each(&:increment)
       end
       
       events.flat_map(&:messages)
