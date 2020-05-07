@@ -134,7 +134,7 @@ module ProjectSimulator
     attr_accessor :title
     attr_reader :triggers, :actions, :constraints, :messages
 
-    def initialize(e, time: nil, debug: false)    
+    def initialize(e, time: nil, title: '', debug: false)
 
       @time, @debug = time, debug
       @title = e.text('event')
@@ -142,17 +142,19 @@ module ProjectSimulator
       @triggers = []
       @constraints = []
 
-      e.xpath('trigger/text()').each do |x| 
-        @triggers << Trigger.new(x, time: time, debug: debug).to_type
+      e.xpath('trigger').each do |x| 
+        @triggers << Trigger.new(x.text().strip, time: time, debug: debug)\
+            .to_type
       end
 
-      e.xpath('action/text()').each do |x|
-        @actions << Action.new(x, debug: debug).to_type
+      e.xpath('action').each do |x|
+        @actions << Action.new(x.text().strip, debug: debug).to_type
       end
 
-      e.xpath('constraint/text()').each do |x|
+      e.xpath('constraint').each do |x|
         puts 'before Constraints.new'
-        @constraints << Constraint.new(x, time: time, debug: debug).to_type
+        @constraints << Constraint.new(x.text().strip, \
+                                       time: time, debug: debug).to_type
       end
 
     end
@@ -185,6 +187,34 @@ module ProjectSimulator
     def time=(val)
       @time = val
       @constraints.each {|x| x.time = val if x.is_a? TimeConstraint }
+    end
+    
+    def to_node()
+      
+      e = Rexle::Element.new(:event, attributes: {title: @title})
+      
+      e.add node_collection(:triggers, @triggers)
+      e.add node_collection(:actions, @actions)
+      e.add node_collection(:constraints, @constraints)
+      
+      return e
+    end
+    
+    def to_rowx()
+      
+      s = "event: %s\n\n" % @title
+      s + [@triggers, @actions, @constraints]\
+          .map {|x| x.collect(&:to_rowx).join("\n")}.join("\n")
+    end
+    
+    private
+    
+    def node_collection(name, a)
+      
+      e = Rexle::Element.new(name)
+      a.each {|x| e.add x.to_node}
+      return e
+      
     end
     
   end
@@ -308,9 +338,21 @@ module ProjectSimulator
         TimeConstraint.new(s, time: @time)
       end      
       
-      get /^once only/i do |s|
+      get /^once only|only once|once|one time|1 time$/i do |s|
         FrequencyConstraint.new(1, debug: @debug)
-      end        
+      end
+      
+      get /^twice only|only twice|twice|two times|2 times$/i do |s|
+        FrequencyConstraint.new(2, debug: @debug)
+      end
+      
+      get /^(Maximum|Max|Up to) ?three times|3 times$/i do |s|
+        FrequencyConstraint.new(3, debug: @debug)
+      end                    
+      
+      get /^(Maximum|Max|Up to) ?four times|4 times$/i do |s|
+        FrequencyConstraint.new(4, debug: @debug)
+      end                          
 
     end
 
@@ -323,25 +365,42 @@ module ProjectSimulator
 
     attr_reader :location
     
-    def initialize(location)
+    def initialize(locationx, location: locationx)
       @location = location
     end
 
     def match()
       @location.downcase == location.downcase
     end
+    
+    def to_node()
+      Rexle::Element.new(:trigger, \
+                         attributes: {type: :motion, location: @location})
+    end
+    
+    def to_rowx()
+      "trigger: Motion detected in the %s" %  @location
+    end        
 
   end
 
   class SayAction
 
-    def initialize(s)
+    def initialize(s, text: s)
       @s = s
     end
     
     def call()
       "say: %s" % @s
     end
+    
+    def to_node()
+      Rexle::Element.new(:action, attributes: {type: :say, text: @s})
+    end        
+    
+    def to_rowx()
+      "action: say %s" %  @s
+    end    
 
   end
   
@@ -349,13 +408,23 @@ module ProjectSimulator
     
     attr_accessor :url
 
-    def initialize(name)
+    def initialize(namex, name: namex, url: '127.0.0.1')
       @name = name
-      @url = '127.0.0.1'
+      @url = url
     end
     
     def call()
       "webhook: %s" % @url
+    end
+    
+    def to_node()
+      Rexle::Element.new(:action, \
+                         attributes: {type: :webhook, name: @name, url: @url})
+    end    
+    
+    def to_rowx()
+      s = "action: webhook %s" %  @name
+      s += "\n  url: %s" % @url
     end
 
   end
@@ -364,19 +433,28 @@ module ProjectSimulator
     
     attr_accessor :time
     
-    def initialize(times, time: nil)
+    def initialize(timesx, times: timesx, time: nil)
       @times, @time = times, time
     end
     
     def match()
       ChronicBetween.new(@times).within?(@time)
     end
+    
+    def to_node()
+      Rexle::Element.new(:constraint, \
+                         attributes: {type: :time, times: @times})      
+    end    
+    
+    def to_rowx()            
+      "constraint: %s" %  @times
+    end    
         
   end
 
   class FrequencyConstraint      
       
-    def initialize(freq, debug: false)
+    def initialize(freqx, freq: freqx, debug: false)
       @freq, @debug = freq, debug
       @counter = 0
     end
@@ -395,8 +473,27 @@ module ProjectSimulator
     
     def reset()
       puts 'resetting' if @debug
-@foo = 0      
-@counter = 0
+      @counter = 0
+    end
+    
+    def to_node()
+      Rexle::Element.new(:constraint, \
+                         attributes: {type: :frequency, freq: @freq})      
+    end
+    
+    def to_rowx()
+      
+      freq = case @freq
+      when 1
+        'Once'
+      when 2
+        'Twice'
+      else
+        "Maximum %s times" % @freq
+      end
+      
+      "constraint: %s" %  freq
+
     end
     
   end
@@ -420,6 +517,18 @@ module ProjectSimulator
     def time=(val)
       @time = val
       @events.each {|event| event.time = val }
+    end
+    
+    def to_doc()
+      
+      doc = Rexle.new('<events/>')      
+      @events.each {|event| doc.root.add event.to_node }
+      return doc
+      
+    end
+    
+    def to_rowx()
+      @events.collect(&:to_rowx).join("\n\n#{'-'*50}\n\n")
     end
     
     def trigger(name, location: '')
