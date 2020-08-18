@@ -1,37 +1,54 @@
-# Using ProjectSimulator to trigger an action
+# Using ProjectSimulator with the MAcroHub gem
 
+
+    require 'macrohub'
     require 'projectsimulator'
 
     s=<<EOF
-    event: Morning welcoming announcement
+    macro: Morning welcoming announcement
 
     trigger: Motion detected in the kitchen
     action: Say 'Good morning'
     action: webhook entered_kitchen
-    constraint: Between 8am and 10am
-    constraint: On a Wednesday
+      url: http://someurl/?id=kitchen
+    constraint: between 7am and 7:30am
 
-    event: Good night announcement
-    trigger: Motion detected in the kitchen after 10pm
+    macro: Good night announcement
+    trigger: Motion detected in the kitchen
     action: Say 'Good night'
     constraint: After 10pm
     EOF
 
-    t = Chronic::parse 'Wednesday 8:32am'
-    ps = ProjectSimulator::Controller.new(s, time: t, debug: true)
-    ps.events[0].actions[1].url = 'http://someurl/clicked/kitchen'
+
+    mh = MacroHub.new(s)
+
+    ps = ProjectSimulator::Controller.new(mh)
+
+    $env = {time: Time.parse('7:15am')}
+    $debug = true
     ps.trigger :motion, location: 'kitchen'
+    #=> ["say: Good morning", "webhook: http://someurl/?id=kitchen"] 
 
-    #=> ["say: Good morning", "webhook: http://someurl/clicked/kitchen"]
+    $env = {time: Time.parse('8:05pm')}
+    ps.trigger :motion, location: 'kitchen'
+    #=> []
+
+    $env = {time: Time.parse('10:05pm')}
+    ps.trigger :motion, location: 'kitchen'
+    #=> ["say: Good night"] 
 
 
-The above example demonstrates the triggering of an action based on the constraints. In this case, when someone entered the kitchen, the computer would greet the visitor with an audible message of 'Good morning'. This action would only occur on a Wednesday between 8am and 10am. Additionally, a webhook would be triggered, which could alert some other service of the initial trigger.
+In the above example a couple of macros are created in plain text. The 1st macro is triggered when there is motion detected in the kitchen between 7am and 7:30am. If successful it returns the message 'say: Good morning'.
 
-Notes:
+The 2nd macro is triggered when there is motion detected in the kitchen after 10pm. If successful it returns the message 'say: Good night'.
 
-* Another constraint would need to be added to check that the motion was only detected once within the given time, to avoid the trigger being fired whenever there was any motion in the kitchen.
+The ProjectSimulator facilitates the execution of triggers, validation of constraints and invocation of actions in cooperation with the MacroHub gem.
 
-projectsimulator simulation simulation iot 
+## Resources
+
+* macrohub https://rubygems.org/gems/macrohub
+
+macro macrohub gem simulator project projectsimulator macrodroid
 
 --------------------------------
 
