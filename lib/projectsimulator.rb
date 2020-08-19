@@ -142,7 +142,7 @@ module ProjectSimulator
     end        
     
     
-    def trigger(name, detail={})
+    def trigger(name, detail={time: $env[:time]})
       
       macros = @macros.select do |macro|
         
