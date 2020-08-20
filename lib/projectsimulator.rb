@@ -21,10 +21,28 @@ module ProjectSimulator
       if obj then
         
         s = obj.strip
+        
+        puts 's: ' + s.inspect if @debug
+        
         if s[0] == '<' or s.lines[1][0..1] == '  ' then
-          @ed = EasyDom.new(s)          
+          
+          puts 'before easydom' if @debug
+          
+          s2 = if s.lines[1][0..1] == '  ' then
+          
+            lines = s.lines.map do |line|
+              line.sub(/(\w+) +is +(\w+)$/) {|x| "#{$1} {switch: #{$2}}" }
+            end
+            
+            lines.join
+            
+          else
+            s
+          end
+          
+          @ed = EasyDom.new(s2)
         else
-          build(obj, root: root) 
+          build(s, root: root) 
         end
 
       end
@@ -104,8 +122,30 @@ module ProjectSimulator
       
     end    
 
-    def to_sliml()
-      @ed.to_sliml
+    def to_sliml(level: 0)
+      
+      s = @ed.to_sliml
+
+      return s if level.to_i > 0
+      
+      lines = s.lines.map do |line|
+        
+        line.sub(/\{[^\}]+\}/) do |x|
+          
+          a = x.scan(/\w+: +[^ ]+/)
+          if a.length == 1 and x[/switch:/] then
+
+            val = x[/(?<=switch: ) *["']([^"']+)/,1]
+            'is ' + val
+          else
+            x
+          end
+
+        end
+      end
+      
+      lines.join
+      
     end
 
     def to_xml(options=nil)
