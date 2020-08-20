@@ -12,12 +12,22 @@ module ProjectSimulator
   class Model
     include AppRoutes
 
-    def initialize(obj=nil, root: 'building1')
+    def initialize(obj=nil, root: 'building1', debug: false)
 
       super()
-      @root = root
+      @root, @debug = root, debug
       @location = nil
-      build(obj, root: root) if obj
+      
+      if obj then
+        
+        s = obj.strip
+        if s[0] == '<' or s.lines[1][0..1] == '  ' then
+          @ed = EasyDom.new(s)          
+        else
+          build(obj, root: root) 
+        end
+
+      end
 
     end
 
@@ -35,8 +45,27 @@ module ProjectSimulator
       status = a.inject(@ed) {|r,x| r.send(x)}.send(h[:action])
       "The %s %s is %s." % [h[:location], h[:device], status]
       
-    end    
+    end
 
+    def get_service(h)
+      
+      a = []
+      a << h[:location].split(/ /) if h.has_key? :location
+      a << h[:service]
+      status = a.inject(@ed) {|r,x| r.send(x)}.send(h[:action])
+      
+      if h.has_key? :location then
+        "The %s %s is %s." % [h[:location], h[:service], status]
+      else
+        "%s is %s." % [h[:service].capitalize, status]
+      end
+      
+    end      
+
+    # Object Property (op)
+    # Helpful for accessing properites in dot notation 
+    # e.g. op.livingroom.light.switch = 'off'
+    #
     def op()
       @ed
     end
@@ -45,13 +74,16 @@ module ProjectSimulator
       @ed.e.element(s)
     end
     
+    # request accepts a string in plain english 
+    # e.g. request 'switch the livingroom light on'
+    #
     def request(s)
 
       params = {request: s}
       requests(params)
       h = find_request(s)
 
-      method(h.first[-1]).call(h)
+      method(h.first[-1]).call(h).gsub(/_/,' ')
       
     end      
     
@@ -62,14 +94,27 @@ module ProjectSimulator
       a.inject(@ed) {|r,x| r.send(x)}.send(h[:action], h[:value])
       
     end
+    
+    def set_service(h)
+      
+      a = []
+      a += h[:location].split(/ /) if h[:location]
+      a << h[:service]
+      a.inject(@ed) {|r,x| r.send(x)}.send(h[:action], h[:value])
+      
+    end    
 
     def to_sliml()
       @ed.to_sliml
     end
 
-    def xml(options=nil)
+    def to_xml(options=nil)
       @ed.xml(pretty: true).gsub(' style=\'\'','')
     end
+    
+    alias xml to_xml
+    
+    # to_xml() is the preferred method
 
     protected      
 
@@ -84,20 +129,44 @@ module ProjectSimulator
       # e.g. switch the gas _fire off
       #
       get /(?:switch|turn) the ([^ ]+) +(on|off)$/ do |device, onoff|
-        location = dev_location(device)
+        location = find_path(device)
         {type: :set_device, action: 'switch=', location: location, device: device, value: onoff}
-      end      
+      end            
       
       # e.g. is the livingroom gas_fire on?
       #
       get /is the ([^ ]+) +([^ ]+) +(?:on|off)\??$/ do |location, device|
         {type: :get_device, action: 'switch', location: location, device: device}
       end
+      
+      # e.g. enable airplane mode
+      #
+      get /((?:dis|en)able) ([^$]+)$/ do |state, rawservice|
+        service = rawservice.gsub(/ /,'_')
+        location = find_path(service)
+        {type: :set_service, action: 'switch=', location: location, service: service, value: state + 'd'}
+      end
+      
+      # e.g. switch airplane mode off
+      #
+      get /switch (.*) (on|off)/ do |rawservice, rawstate|        
+        
+        state = rawstate == 'on' ? 'enabled' : 'disabled'
+        service = rawservice.gsub(/ /,'_')
+        location = find_path(service)
+        {type: :set_service, action: 'switch=', location: location, service: service, value: state}
+      end               
+      
+      # e.g. is airplane mode enabed?
+      #
+      get /is (.*) +(?:(?:dis|en)abled)\??$/ do |service|
+        {type: :get_service, action: 'switch', service: service.gsub(/ /,'_')}
+      end      
 
       # e.g. is the gas_fire on?
       #
       get /is the ([^ ]+) +(?:on|off)\??$/ do |device|
-        location = dev_location(device)        
+        location = find_path(device)        
         {type: :get_device, action: 'switch', location: location, device: device}
       end            
       
@@ -110,7 +179,7 @@ module ProjectSimulator
       # e.g. fetch the temperature reading
       #
       get /fetch the ([^ ]+) +(?:reading)$/ do |device|
-        location = dev_location(device)        
+        location = find_path(device)        
         {type: :get_device, action: 'reading', location: location, device: device}
       end          
 
@@ -118,8 +187,11 @@ module ProjectSimulator
     
     private
     
-    def dev_location(device)
-      a = query('//'+ device).backtrack.to_xpath.split('/')
+    def find_path(s)
+      puts 'find_path s: ' + s.inspect if @debug
+      found = query('//'+ s)
+      return unless found
+      a = found.backtrack.to_xpath.split('/')
       a[1..-2].join(' ')            
     end
         
