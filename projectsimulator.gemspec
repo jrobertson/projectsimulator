@@ -1,10 +1,15 @@
 Gem::Specification.new do |s|
   s.name = 'projectsimulator'
-  s.version = '0.3.3'
-  s.summary = 'Project Simulator (in development) aims to make it easier to ' + 
+  s.version = '0.4.0'
+  s.summary = 'Project Simulator (in development) aims to make it easier to ' +
       'observe triggers and actions from an XML based model.'
   s.authors = ['James Robertson']
-  s.files = Dir['lib/projectsimulator.rb']
+  s.files = Dir[
+    'lib/projectsimulator.rb', 
+    'lib/projectsimulator/model.rb', 
+    'lib/projectsimulator/controller.rb'
+  ]   
+  s.add_runtime_dependency('unichron', '~> 0.2', '>=0.2.0')
   s.add_runtime_dependency('easydom', '~> 0.2', '>=0.2.1')
   s.add_runtime_dependency('app-routes', '~> 0.1', '>=0.1.19')
   s.signing_key = '../privatekeys/projectsimulator.pem'
